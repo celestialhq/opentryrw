@@ -1,0 +1,11 @@
+.git
+.github
+.env
+.venv
+.uv-cache
+__pycache__
+*.pyc
+*.log
+data
+frontend/node_modules
+frontend/dist

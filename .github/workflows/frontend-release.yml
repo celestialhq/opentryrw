@@ -1,0 +1,67 @@
+name: Frontend Release
+
+on:
+  push:
+    tags:
+      - frontend
+      - frontend_dev
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to update
+        required: true
+        default: frontend_dev
+        type: choice
+        options:
+          - frontend
+          - frontend_dev
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Pack frontend
+        run: |
+          tar -C frontend/dist -czf "opentryrw-frontend-${RELEASE_TAG}.tar.gz" .
+          zip -r "opentryrw-frontend-${RELEASE_TAG}.zip" frontend/dist
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opentryrw-frontend-${{ env.RELEASE_TAG }}
+          path: |
+            opentryrw-frontend-${{ env.RELEASE_TAG }}.tar.gz
+            opentryrw-frontend-${{ env.RELEASE_TAG }}.zip
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: OpenTryRW frontend ${{ env.RELEASE_TAG }}
+          prerelease: ${{ env.RELEASE_TAG == 'frontend_dev' }}
+          files: |
+            opentryrw-frontend-${{ env.RELEASE_TAG }}.tar.gz
+            opentryrw-frontend-${{ env.RELEASE_TAG }}.zip

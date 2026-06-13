@@ -1,0 +1,150 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-opentryrw}
+      POSTGRES_USER: ${POSTGRES_USER:-opentryrw}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-opentryrw}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - opentryrw-postgres:/var/lib/postgresql/data
+
+  opentryrw:
+    build: .
+    image: ${OPENTRYRW_IMAGE:-ghcr.io/celestialhq/opentryrw:local}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      OPENTRYRW_DB: ${OPENTRYRW_DB:-/app/data/opentryrw.json}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://opentryrw:opentryrw@postgres:5432/opentryrw}
+      DATABASE_ECHO: ${DATABASE_ECHO:-false}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-postgres}
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://127.0.0.1:4174}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      DEPLOYMENT_PROVIDER: ${DEPLOYMENT_PROVIDER:-mock}
+      MAX_ACTIVE_INSTANCES: ${MAX_ACTIVE_INSTANCES:-10}
+      SESSION_COOLDOWN_SECONDS: ${SESSION_COOLDOWN_SECONDS:-86400}
+      FINGERPRINT_COOLDOWN_SECONDS: ${FINGERPRINT_COOLDOWN_SECONDS:-86400}
+      CLEANUP_INTERVAL_SECONDS: ${CLEANUP_INTERVAL_SECONDS:-30}
+      DEPLOYMENT_HEALTH_TIMEOUT_SECONDS: ${DEPLOYMENT_HEALTH_TIMEOUT_SECONDS:-600}
+      PROVIDER_REFRESH_INTERVAL_SECONDS: ${PROVIDER_REFRESH_INTERVAL_SECONDS:-10}
+      RECONCILIATION_INTERVAL_SECONDS: ${RECONCILIATION_INTERVAL_SECONDS:-300}
+      STALE_RESOURCE_GRACE_SECONDS: ${STALE_RESOURCE_GRACE_SECONDS:-900}
+      ABUSE_HASH_SECRET: ${ABUSE_HASH_SECRET:-}
+      TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
+      RATE_LIMIT_AUTH_START_PER_MINUTE: ${RATE_LIMIT_AUTH_START_PER_MINUTE:-12}
+      RATE_LIMIT_AUTH_CALLBACK_PER_MINUTE: ${RATE_LIMIT_AUTH_CALLBACK_PER_MINUTE:-20}
+      RATE_LIMIT_SESSION_CREATE_PER_HOUR: ${RATE_LIMIT_SESSION_CREATE_PER_HOUR:-6}
+      RATE_LIMIT_SESSION_DELETE_PER_MINUTE: ${RATE_LIMIT_SESSION_DELETE_PER_MINUTE:-10}
+
+      TELEGRAM_CLIENT_ID: ${TELEGRAM_CLIENT_ID:-}
+      TELEGRAM_CLIENT_SECRET: ${TELEGRAM_CLIENT_SECRET:-}
+      TELEGRAM_REDIRECT_URI: ${TELEGRAM_REDIRECT_URI:-http://127.0.0.1:4174/api/auth/telegram/callback}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_OPERATOR_CHAT_ID: ${TELEGRAM_OPERATOR_CHAT_ID:-}
+
+      DIGITALOCEAN_TOKEN: ${DIGITALOCEAN_TOKEN:-}
+      DIGITALOCEAN_REGION: ${DIGITALOCEAN_REGION:-fra1}
+      DIGITALOCEAN_SIZE: ${DIGITALOCEAN_SIZE:-s-1vcpu-2gb}
+      DIGITALOCEAN_IMAGE: ${DIGITALOCEAN_IMAGE:-ubuntu-24-04-x64}
+      DIGITALOCEAN_SSH_KEYS: ${DIGITALOCEAN_SSH_KEYS:-}
+      DIGITALOCEAN_TAG_PREFIX: ${DIGITALOCEAN_TAG_PREFIX:-opentryrw}
+
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+      CLOUDFLARE_ZONE_ID: ${CLOUDFLARE_ZONE_ID:-}
+      CLOUDFLARE_ROOT_DOMAIN: ${CLOUDFLARE_ROOT_DOMAIN:-}
+      CLOUDFLARE_RECORD_TTL: ${CLOUDFLARE_RECORD_TTL:-1}
+      DEPLOYMENT_PUBLIC_DOMAIN_TEMPLATE: ${DEPLOYMENT_PUBLIC_DOMAIN_TEMPLATE:-{ip}.sslip.io}
+
+      REMNAWAVE_STABLE_COMPOSE_URL: ${REMNAWAVE_STABLE_COMPOSE_URL:-https://raw.githubusercontent.com/remnawave/backend/refs/heads/main/docker-compose-prod.yml}
+      REMNAWAVE_DEV_COMPOSE_URL: ${REMNAWAVE_DEV_COMPOSE_URL:-https://gist.githubusercontent.com/pius-pp/7ab391dc9659200cd22e1522d0b77582/raw/520f47cf546bd5802f298f23c399781ad6a55f4f/docker-compose-dev.yml}
+      REMNAWAVE_ENV_SAMPLE_URL: ${REMNAWAVE_ENV_SAMPLE_URL:-https://raw.githubusercontent.com/remnawave/backend/refs/heads/main/.env.sample}
+    ports:
+      - "${OPENTRYRW_PORT:-4174}:4174"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import json, urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:4174/api/health', timeout=5)); raise SystemExit(0 if data.get('status') == 'ok' else 1)"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - opentryrw-data:/app/data
+
+  opentryrw-worker:
+    build: .
+    #image: ${OPENTRYRW_IMAGE:-ghcr.io/your-org/opentryrw:local}
+    restart: unless-stopped
+    command: ["python", "-m", "opentryrw.worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      opentryrw:
+        condition: service_started
+    environment:
+      OPENTRYRW_DB: ${OPENTRYRW_DB:-/app/data/opentryrw.json}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://opentryrw:opentryrw@postgres:5432/opentryrw}
+      DATABASE_ECHO: ${DATABASE_ECHO:-false}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-postgres}
+      RUN_MIGRATIONS: "false"
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://127.0.0.1:4174}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      DEPLOYMENT_PROVIDER: ${DEPLOYMENT_PROVIDER:-mock}
+      MAX_ACTIVE_INSTANCES: ${MAX_ACTIVE_INSTANCES:-10}
+      SESSION_COOLDOWN_SECONDS: ${SESSION_COOLDOWN_SECONDS:-86400}
+      FINGERPRINT_COOLDOWN_SECONDS: ${FINGERPRINT_COOLDOWN_SECONDS:-86400}
+      CLEANUP_INTERVAL_SECONDS: ${CLEANUP_INTERVAL_SECONDS:-30}
+      DEPLOYMENT_HEALTH_TIMEOUT_SECONDS: ${DEPLOYMENT_HEALTH_TIMEOUT_SECONDS:-600}
+      PROVIDER_REFRESH_INTERVAL_SECONDS: ${PROVIDER_REFRESH_INTERVAL_SECONDS:-10}
+      RECONCILIATION_INTERVAL_SECONDS: ${RECONCILIATION_INTERVAL_SECONDS:-300}
+      STALE_RESOURCE_GRACE_SECONDS: ${STALE_RESOURCE_GRACE_SECONDS:-900}
+      WORKER_ID: ${WORKER_ID:-opentryrw-worker}
+      WORKER_POLL_INTERVAL_SECONDS: ${WORKER_POLL_INTERVAL_SECONDS:-5}
+      WORKER_BATCH_SIZE: ${WORKER_BATCH_SIZE:-4}
+      WORKER_LOCK_SECONDS: ${WORKER_LOCK_SECONDS:-120}
+      ABUSE_HASH_SECRET: ${ABUSE_HASH_SECRET:-}
+      TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
+      RATE_LIMIT_AUTH_START_PER_MINUTE: ${RATE_LIMIT_AUTH_START_PER_MINUTE:-12}
+      RATE_LIMIT_AUTH_CALLBACK_PER_MINUTE: ${RATE_LIMIT_AUTH_CALLBACK_PER_MINUTE:-20}
+      RATE_LIMIT_SESSION_CREATE_PER_HOUR: ${RATE_LIMIT_SESSION_CREATE_PER_HOUR:-6}
+      RATE_LIMIT_SESSION_DELETE_PER_MINUTE: ${RATE_LIMIT_SESSION_DELETE_PER_MINUTE:-10}
+
+      TELEGRAM_CLIENT_ID: ${TELEGRAM_CLIENT_ID:-}
+      TELEGRAM_CLIENT_SECRET: ${TELEGRAM_CLIENT_SECRET:-}
+      TELEGRAM_REDIRECT_URI: ${TELEGRAM_REDIRECT_URI:-http://127.0.0.1:4174/api/auth/telegram/callback}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_OPERATOR_CHAT_ID: ${TELEGRAM_OPERATOR_CHAT_ID:-}
+
+      DIGITALOCEAN_TOKEN: ${DIGITALOCEAN_TOKEN:-}
+      DIGITALOCEAN_REGION: ${DIGITALOCEAN_REGION:-fra1}
+      DIGITALOCEAN_SIZE: ${DIGITALOCEAN_SIZE:-s-1vcpu-2gb}
+      DIGITALOCEAN_IMAGE: ${DIGITALOCEAN_IMAGE:-ubuntu-24-04-x64}
+      DIGITALOCEAN_SSH_KEYS: ${DIGITALOCEAN_SSH_KEYS:-}
+      DIGITALOCEAN_TAG_PREFIX: ${DIGITALOCEAN_TAG_PREFIX:-opentryrw}
+
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+      CLOUDFLARE_ZONE_ID: ${CLOUDFLARE_ZONE_ID:-}
+      CLOUDFLARE_ROOT_DOMAIN: ${CLOUDFLARE_ROOT_DOMAIN:-}
+      CLOUDFLARE_RECORD_TTL: ${CLOUDFLARE_RECORD_TTL:-1}
+      DEPLOYMENT_PUBLIC_DOMAIN_TEMPLATE: ${DEPLOYMENT_PUBLIC_DOMAIN_TEMPLATE:-{ip}.sslip.io}
+
+      REMNAWAVE_STABLE_COMPOSE_URL: ${REMNAWAVE_STABLE_COMPOSE_URL:-https://raw.githubusercontent.com/remnawave/backend/refs/heads/main/docker-compose-prod.yml}
+      REMNAWAVE_DEV_COMPOSE_URL: ${REMNAWAVE_DEV_COMPOSE_URL:-https://gist.githubusercontent.com/pius-pp/7ab391dc9659200cd22e1522d0b77582/raw/520f47cf546bd5802f298f23c399781ad6a55f4f/docker-compose-dev.yml}
+      REMNAWAVE_ENV_SAMPLE_URL: ${REMNAWAVE_ENV_SAMPLE_URL:-https://raw.githubusercontent.com/remnawave/backend/refs/heads/main/.env.sample}
+    volumes:
+      - opentryrw-data:/app/data
+
+volumes:
+  opentryrw-data:
+  opentryrw-postgres:
